@@ -9,7 +9,7 @@ import { CameraCard } from './CameraCard';
 import { AlertCard } from './AlertCard';
 import { LiveFeedPlayer } from './LiveFeedPlayer';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'; // Removed DialogTrigger from here as it's not used at this level directly for the main dialogs
 import { AddCameraForm } from './AddCameraForm';
 import { AlertFilters } from './AlertFilters';
 import { useToast } from '@/hooks/use-toast';
@@ -38,8 +38,9 @@ export default function DashboardClientPage() {
   useEffect(() => {
     // Load initial mock data
     setCameras(mockCameras);
-    setAlerts(mockAlerts);
-    setFilteredAlerts(mockAlerts); // Initially, show all alerts
+    const sortedAlerts = [...mockAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setAlerts(sortedAlerts);
+    setFilteredAlerts(sortedAlerts); // Initially, show all alerts, sorted
   }, []);
 
   useEffect(() => {
@@ -81,7 +82,8 @@ export default function DashboardClientPage() {
     if (window.confirm(`Are you sure you want to delete ${cameraToDelete.name}?`)) {
       setCameras(cameras.filter(camera => camera.id !== cameraToDelete.id));
       // Also remove related alerts or reassign them if necessary
-      const updatedAlerts = alerts.filter(alert => alert.cameraId !== cameraToDelete.id);
+      const updatedAlerts = alerts.filter(alert => alert.cameraId !== cameraToDelete.id)
+                                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setAlerts(updatedAlerts);
       setFilteredAlerts(updatedAlerts);
       toast({ title: "Camera Deleted", description: `${cameraToDelete.name} has been removed.`, variant: "destructive" });
@@ -104,7 +106,11 @@ export default function DashboardClientPage() {
         },
       };
       const newAlert = await createSmartAlertAction(input);
-      setAlerts(prevAlerts => [newAlert, ...prevAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      const updatedAlerts = [newAlert, ...alerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setAlerts(updatedAlerts);
+      // Re-apply filters to include the new alert if it matches, or just prepend to filteredAlerts if no filters are active
+      // For simplicity here, we'll just update filteredAlerts directly, assuming it should also be sorted.
+      // A more robust approach might re-evaluate current filters against the new alerts list.
       setFilteredAlerts(prevAlerts => [newAlert, ...prevAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())); 
       toast({ title: "AI Alert Generated", description: `New ${newAlert.severity} alert for ${camera.name}.`, variant: newAlert.severity === 'HIGH' ? 'destructive' : 'default' });
     } catch (error) {
@@ -140,7 +146,7 @@ export default function DashboardClientPage() {
   const handleVerifyAlert = (alertToVerify: Alert, isTruePositive: boolean, notes?: string) => {
     const updatedAlertsList = alerts.map(alert =>
       alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
-    );
+    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setAlerts(updatedAlertsList);
     setFilteredAlerts(currentFiltered => currentFiltered.map(alert => 
         alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
@@ -265,11 +271,10 @@ export default function DashboardClientPage() {
           <section id="manage-cameras">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold">Manage Cameras ({cameras.length})</h2>
-              <DialogTrigger asChild>
-                <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
-                </Button>
-              </DialogTrigger>
+              {/* Removed DialogTrigger wrapper here, button directly controls dialog state */}
+              <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
+              </Button>
             </div>
             {cameras.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -289,11 +294,10 @@ export default function DashboardClientPage() {
                 <Video size={48} className="mx-auto text-muted-foreground mb-2" />
                 <h3 className="text-xl font-medium text-muted-foreground">No Cameras Added</h3>
                 <p className="text-sm text-muted-foreground mb-4">Get started by adding your first CCTV camera.</p>
-                <DialogTrigger asChild>
-                  <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
-                  </Button>
-                </DialogTrigger>
+                {/* Removed DialogTrigger wrapper here, button directly controls dialog state */}
+                <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
+                </Button>
               </div>
             )}
           </section>
