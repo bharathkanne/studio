@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Camera } from '@/lib/types';
@@ -9,9 +10,16 @@ import { Button } from '../ui/button';
 
 interface LiveFeedPlayerProps {
   camera: Camera;
+  onMaximize?: (camera: Camera) => void; // Added onMaximize prop
 }
 
-export function LiveFeedPlayer({ camera }: LiveFeedPlayerProps) {
+export function LiveFeedPlayer({ camera, onMaximize }: LiveFeedPlayerProps) {
+  const handleMaximizeClick = () => {
+    if (onMaximize) {
+      onMaximize(camera);
+    }
+  };
+
   return (
     <Card className="overflow-hidden shadow-md">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 border-b">
@@ -40,7 +48,13 @@ export function LiveFeedPlayer({ camera }: LiveFeedPlayerProps) {
             </div>
           )}
         </div>
-        <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-7 w-7 bg-black/30 hover:bg-black/50 text-white">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="absolute top-2 right-2 h-7 w-7 bg-black/30 hover:bg-black/50 text-white"
+          onClick={handleMaximizeClick} // Call handleMaximizeClick
+          aria-label={`Maximize live feed for ${camera.name}`}
+        >
           <Maximize size={16} />
         </Button>
       </CardContent>

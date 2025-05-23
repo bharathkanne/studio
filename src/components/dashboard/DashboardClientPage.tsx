@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect }
@@ -16,6 +17,7 @@ import { createSmartAlertAction, type CreateSmartAlertActionInput } from '@/app/
 import { PlusCircle, Video, AlertTriangle, LayoutGrid, List } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Image from 'next/image';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 export default function DashboardClientPage() {
   const [cameras, setCameras] = useState<Camera[]>([]);
@@ -25,6 +27,11 @@ export default function DashboardClientPage() {
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
   const [selectedLiveViewCamera, setSelectedLiveViewCamera] = useState<Camera | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = searchParams.get('tab') || 'dashboard';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const { toast } = useToast();
 
@@ -34,6 +41,18 @@ export default function DashboardClientPage() {
     setAlerts(mockAlerts);
     setFilteredAlerts(mockAlerts); // Initially, show all alerts
   }, []);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && (tab === 'dashboard' || tab === 'cameras' || tab === 'alerts')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    router.push(`/dashboard?tab=${value}`, { scroll: false });
+  };
 
   const handleAddOrUpdateCamera = (cameraData: Omit<Camera, 'id' | 'status' | 'userId'>) => {
     if (editingCamera) {
@@ -85,8 +104,8 @@ export default function DashboardClientPage() {
         },
       };
       const newAlert = await createSmartAlertAction(input);
-      setAlerts(prevAlerts => [newAlert, ...prevAlerts]);
-      setFilteredAlerts(prevAlerts => [newAlert, ...prevAlerts]); // Add to filtered list too, or re-filter
+      setAlerts(prevAlerts => [newAlert, ...prevAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      setFilteredAlerts(prevAlerts => [newAlert, ...prevAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())); 
       toast({ title: "AI Alert Generated", description: `New ${newAlert.severity} alert for ${camera.name}.`, variant: newAlert.severity === 'HIGH' ? 'destructive' : 'default' });
     } catch (error) {
       toast({ title: "Simulation Failed", description: "Could not generate AI alert.", variant: "destructive" });
@@ -111,19 +130,21 @@ export default function DashboardClientPage() {
         return alertDate.toDateString() === filters.date?.toDateString();
       });
     }
-    setFilteredAlerts(tempAlerts);
+    setFilteredAlerts(tempAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
   
   const handleClearAlertFilters = () => {
-    setFilteredAlerts(alerts);
+    setFilteredAlerts(alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   }
 
   const handleVerifyAlert = (alertToVerify: Alert, isTruePositive: boolean, notes?: string) => {
-    const updatedAlerts = alerts.map(alert =>
+    const updatedAlertsList = alerts.map(alert =>
       alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
     );
-    setAlerts(updatedAlerts);
-    setFilteredAlerts(updatedAlerts); // Update filtered list to reflect verification
+    setAlerts(updatedAlertsList);
+    setFilteredAlerts(currentFiltered => currentFiltered.map(alert => 
+        alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
+    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
     toast({
       title: "Alert Verified",
       description: `Alert for ${alertToVerify.cameraName} marked as ${isTruePositive ? 'True Positive' : 'False Positive'}.`
@@ -134,6 +155,9 @@ export default function DashboardClientPage() {
     // For now, just log. In a real app, this would open a modal with video playback.
     console.log("Viewing evidence for alert:", alert);
     toast({ title: "View Evidence", description: `Displaying evidence for alert from ${alert.cameraName}. (Mock)` });
+    // Potentially open a dialog with the alert.videoClipUrl or similar
+    // For example, if we had a state for selectedAlertForEvidence:
+    // setSelectedAlertForEvidence(alert); setIsEvidenceDialogOpen(true);
   };
   
   const handleViewLive = (camera: Camera) => {
@@ -184,7 +208,7 @@ export default function DashboardClientPage() {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue="dashboard" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-3 md:w-auto md:inline-flex mb-6">
           <TabsTrigger value="dashboard">Overview</TabsTrigger>
           <TabsTrigger value="cameras">Manage Cameras</TabsTrigger>
@@ -198,8 +222,8 @@ export default function DashboardClientPage() {
             </div>
             {cameras.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {cameras.filter(cam => cam.status === 'live').slice(0,3).map(camera => ( // Show up to 3 live cameras on overview
-                  <LiveFeedPlayer key={camera.id} camera={camera} />
+                {cameras.filter(cam => cam.status === 'live').slice(0,3).map(camera => ( 
+                  <LiveFeedPlayer key={camera.id} camera={camera} onMaximize={handleViewLive} />
                 ))}
               </div>
             ) : (
@@ -207,10 +231,9 @@ export default function DashboardClientPage() {
             )}
              {cameras.filter(cam => cam.status === 'live').length > 3 && (
                 <div className="mt-4 text-center">
-                    <Button variant="outline" onClick={() => {
-                        const camerasTab = document.querySelector('button[data-state="inactive"][role="tab"][value="cameras"]') as HTMLButtonElement | null;
-                        camerasTab?.click();
-                    }}>View All Live Feeds</Button>
+                    <Button variant="outline" onClick={() => handleTabChange('cameras')}>
+                      View All Live Feeds
+                    </Button>
                 </div>
             )}
           </section>
@@ -221,7 +244,7 @@ export default function DashboardClientPage() {
              </div>
              {alerts.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredAlerts.slice(0,4).map(alert => ( // Show up to 4 recent alerts
+                {filteredAlerts.slice(0,4).map(alert => ( 
                     <AlertCard key={alert.id} alert={alert} onViewEvidence={handleViewEvidence} onVerify={handleVerifyAlert} />
                 ))}
                 </div>
@@ -230,10 +253,9 @@ export default function DashboardClientPage() {
              )}
              {filteredAlerts.length > 4 && (
                 <div className="mt-4 text-center">
-                    <Button variant="outline" onClick={() => {
-                        const alertsTab = document.querySelector('button[data-state="inactive"][role="tab"][value="alerts"]') as HTMLButtonElement | null;
-                        alertsTab?.click();
-                    }}>View All Alerts</Button>
+                     <Button variant="outline" onClick={() => handleTabChange('alerts')}>
+                       View All Alerts
+                     </Button>
                 </div>
             )}
           </section>
@@ -310,3 +332,4 @@ export default function DashboardClientPage() {
     </div>
   );
 }
+
