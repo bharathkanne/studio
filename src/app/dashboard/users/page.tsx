@@ -16,50 +16,53 @@ import { AddUserForm } from '@/components/dashboard/AddUserForm';
 export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null); // For future edit functionality
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    setUsers(mockUsersList.sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+    // Initialize with a copy of mockUsersList and sort it
+    setUsers([...mockUsersList].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
   }, []);
 
   const handleOpenAddUserDialog = () => {
-    setEditingUser(null); // Ensure we are in "add" mode
+    setEditingUser(null);
     setIsAddUserDialogOpen(true);
   };
 
-  const handleAddOrUpdateUser = (userData: Omit<User, 'id'>) => {
-    // For mock purposes, we'll generate a new ID for additions
-    // In a real app, ID generation or data persistence would be backend-driven.
-    // Password handling is also simplified for mock.
-    if (editingUser) {
-      // Placeholder for update logic
-      setUsers(users.map(u => u.id === editingUser.id ? { ...editingUser, ...userData } : u).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
-      toast({ title: "User Updated (Mock)", description: `${userData.name} details have been updated.` });
+  const handleAddOrUpdateUser = (userData: Omit<User, 'id'>, existingId?: string) => {
+    if (existingId) {
+      // Update existing user
+      setUsers(prevUsers =>
+        prevUsers.map(u => (u.id === existingId ? { ...u, ...userData } : u)).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      );
+      toast({ title: "User Updated", description: `${userData.name} details have been updated.` });
     } else {
+      // Add new user
       const newUser: User = {
         ...userData,
         id: `user-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
       };
-      setUsers([...users, newUser].sort((a,b) => (a.name || '').localeCompare(b.name || '')));
-      // Update mockUsersList as well so it persists across potential re-renders if page isn't fully SPA for this
-      // mockUsersList.push(newUser); // This would modify the imported mock array directly
+      setUsers(prevUsers => [...prevUsers, newUser].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+      // Optionally update mockUsersList if it's intended to be a persistent mock source across sessions/refreshes (not typical for state)
+      // mockUsersList.push(newUser); 
       toast({ title: "User Added", description: `${newUser.name} has been successfully added.` });
     }
     setEditingUser(null);
     setIsAddUserDialogOpen(false);
   };
 
-
   const handleEditUser = (user: User) => {
-    // setEditingUser(user);
-    // setIsAddUserDialogOpen(true);
-    toast({ title: "Edit User (Not Implemented)", description: `Editing for ${user.name} is not fully implemented yet.`});
+    if (user.email === 'admin@example.com' && user.id !== 'admin-user-001') {
+        // This handles a scenario where a new user might be mistakenly given the admin email.
+        // The primary admin 'admin-user-001' can be edited (e.g. name, admin status toggle if allowed).
+    }
+    setEditingUser(user);
+    setIsAddUserDialogOpen(true);
   };
 
   const handleDeleteUser = (userToDelete: User) => {
-    if (userToDelete.email === 'admin@example.com') {
-        toast({ title: "Cannot Delete Admin", description: "The default admin user cannot be deleted.", variant: "destructive" });
+    if (userToDelete.id === 'admin-user-001' || userToDelete.email === 'admin@example.com') {
+        toast({ title: "Cannot Delete Admin", description: "The primary admin user cannot be deleted.", variant: "destructive" });
         return;
     }
     if (window.confirm(`Are you sure you want to delete ${userToDelete.name}? This is a mock action.`)) {
@@ -72,14 +75,14 @@ export default function UserManagementPage() {
     <div className="space-y-6">
       <Dialog open={isAddUserDialogOpen} onOpenChange={(isOpen) => {
         setIsAddUserDialogOpen(isOpen);
-        if (!isOpen) setEditingUser(null);
+        if (!isOpen) setEditingUser(null); // Reset editingUser when dialog closes
       }}>
         <DialogContent className="sm:max-w-[425px] md:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Edit User' : 'Add New User'}</DialogTitle>
           </DialogHeader>
           <AddUserForm 
-            onAddUser={handleAddOrUpdateUser} 
+            onSubmitUser={handleAddOrUpdateUser} 
             existingUser={editingUser}
             onClose={() => {
               setIsAddUserDialogOpen(false);
@@ -128,7 +131,7 @@ export default function UserManagementPage() {
                         <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
                           <Edit className="mr-1 h-4 w-4" /> Edit
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user)} disabled={user.email === 'admin@example.com'}>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user)} disabled={user.id === 'admin-user-001' || user.email === 'admin@example.com'}>
                           <Trash2 className="mr-1 h-4 w-4" /> Delete
                         </Button>
                       </TableCell>
@@ -154,4 +157,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
