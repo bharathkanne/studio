@@ -1,4 +1,12 @@
-import type { Camera, Alert } from './types';
+import type { Camera, Alert, User } from './types';
+
+export const mockUsersList: User[] = [
+  { id: 'admin-user-001', email: 'admin@example.com', name: 'Admin User', isAdmin: true },
+  { id: 'user-001', email: 'charlie@example.com', name: 'Charlie Brown', isAdmin: false },
+  { id: 'user-002', email: 'lucy@example.com', name: 'Lucy Van Pelt', isAdmin: false },
+  { id: 'user-003', email: 'linus@example.com', name: 'Linus Van Pelt', isAdmin: false },
+  { id: 'user-004', email: 'snoopy@example.com', name: 'Snoopy Dog', isAdmin: false },
+];
 
 export const mockCameras: Camera[] = [
   {
@@ -8,7 +16,7 @@ export const mockCameras: Camera[] = [
     location: 'Entrance',
     tags: ['outdoor', ' wichtigen', 'HD'],
     status: 'live',
-    userId: 'mock-user-1',
+    userId: 'admin-user-001', // Example linked to admin
   },
   {
     id: 'cam-002',
@@ -17,7 +25,7 @@ export const mockCameras: Camera[] = [
     location: 'Living Room',
     tags: ['indoor', 'pet-monitoring'],
     status: 'live',
-    userId: 'mock-user-1',
+    userId: 'user-001', // Example linked to charlie
   },
   {
     id: 'cam-003',
@@ -26,7 +34,7 @@ export const mockCameras: Camera[] = [
     location: 'Backyard',
     tags: ['outdoor', 'night-vision'],
     status: 'offline',
-    userId: 'mock-user-1',
+    userId: 'admin-user-001',
   },
     {
     id: 'cam-004',
@@ -35,7 +43,7 @@ export const mockCameras: Camera[] = [
     location: 'Office Main',
     tags: ['indoor', 'sensitive-area'],
     status: 'live',
-    userId: 'mock-user-1',
+    userId: 'user-002', // Example linked to lucy
   },
 ];
 
