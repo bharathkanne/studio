@@ -1,33 +1,51 @@
+
 'use client';
 
 import type { Camera } from '@/lib/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Edit3 } from 'lucide-react';
 
 interface AddCameraFormProps {
-  onAddCamera: (camera: Omit<Camera, 'id' | 'status' | 'userId'>) => void;
+  onSubmitCamera: (cameraData: Omit<Camera, 'id' | 'status' | 'userId'>, existingId?: string) => void;
   existingCamera?: Camera | null; // For editing
   onClose: () => void;
 }
 
-export function AddCameraForm({ onAddCamera, existingCamera, onClose }: AddCameraFormProps) {
-  const [name, setName] = useState(existingCamera?.name || '');
-  const [rtspUrl, setRtspUrl] = useState(existingCamera?.rtspUrl || '');
-  const [location, setLocation] = useState(existingCamera?.location || '');
-  const [tags, setTags] = useState(existingCamera?.tags.join(', ') || '');
+export function AddCameraForm({ onSubmitCamera, existingCamera, onClose }: AddCameraFormProps) {
+  const [name, setName] = useState('');
+  const [rtspUrl, setRtspUrl] = useState('');
+  const [location, setLocation] = useState('');
+  const [tags, setTags] = useState('');
   const { toast } = useToast();
+
+  const isEditing = !!existingCamera;
+
+  useEffect(() => {
+    if (existingCamera) {
+      setName(existingCamera.name);
+      setRtspUrl(existingCamera.rtspUrl);
+      setLocation(existingCamera.location);
+      setTags(existingCamera.tags.join(', '));
+    } else {
+      // Reset for add mode
+      setName('');
+      setRtspUrl('');
+      setLocation('');
+      setTags('');
+    }
+  }, [existingCamera]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !rtspUrl || !location) {
       toast({
         title: 'Missing Fields',
-        description: 'Please fill in all required fields.',
+        description: 'Please fill in Camera Name, RTSP URL, and Location.',
         variant: 'destructive',
       });
       return;
@@ -40,11 +58,8 @@ export function AddCameraForm({ onAddCamera, existingCamera, onClose }: AddCamer
       tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
     };
     
-    onAddCamera(cameraData);
-    toast({
-      title: existingCamera ? 'Camera Updated' : 'Camera Added',
-      description: `${name} has been successfully ${existingCamera ? 'updated' : 'added'}.`,
-    });
+    onSubmitCamera(cameraData, existingCamera?.id);
+    // Toast is handled by parent for add/update distinction
     onClose(); // Close dialog/modal after submission
   };
 
@@ -92,7 +107,8 @@ export function AddCameraForm({ onAddCamera, existingCamera, onClose }: AddCamer
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
         <Button type="submit">
-          <PlusCircle className="mr-2 h-4 w-4" /> {existingCamera ? 'Update Camera' : 'Add Camera'}
+          {isEditing ? <Edit3 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+          {isEditing ? 'Update Camera' : 'Add Camera'}
         </Button>
       </div>
     </form>

@@ -1,23 +1,24 @@
 
 'use client';
 
-import { useState, useEffect }
-from 'react';
+import { useState, useEffect } from 'react';
 import type { Camera, Alert } from '@/lib/types';
 import { mockCameras, mockAlerts } from '@/lib/mockData';
 import { CameraCard } from './CameraCard';
 import { AlertCard } from './AlertCard';
 import { LiveFeedPlayer } from './LiveFeedPlayer';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'; // Removed DialogTrigger from here as it's not used at this level directly for the main dialogs
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCameraForm } from './AddCameraForm';
 import { AlertFilters } from './AlertFilters';
 import { useToast } from '@/hooks/use-toast';
 import { createSmartAlertAction, type CreateSmartAlertActionInput } from '@/app/actions';
-import { PlusCircle, Video, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { PlusCircle, Video, AlertTriangle, LayoutGrid, List, Info } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+
 
 export default function DashboardClientPage() {
   const [cameras, setCameras] = useState<Camera[]>([]);
@@ -26,6 +27,7 @@ export default function DashboardClientPage() {
   const [isAddCameraDialogOpen, setIsAddCameraDialogOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
   const [selectedLiveViewCamera, setSelectedLiveViewCamera] = useState<Camera | null>(null);
+  const [selectedAlertForEvidence, setSelectedAlertForEvidence] = useState<Alert | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   
   const searchParams = useSearchParams();
@@ -36,11 +38,10 @@ export default function DashboardClientPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Load initial mock data
     setCameras(mockCameras);
     const sortedAlerts = [...mockAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setAlerts(sortedAlerts);
-    setFilteredAlerts(sortedAlerts); // Initially, show all alerts, sorted
+    setFilteredAlerts(sortedAlerts);
   }, []);
 
   useEffect(() => {
@@ -55,18 +56,20 @@ export default function DashboardClientPage() {
     router.push(`/dashboard?tab=${value}`, { scroll: false });
   };
 
-  const handleAddOrUpdateCamera = (cameraData: Omit<Camera, 'id' | 'status' | 'userId'>) => {
-    if (editingCamera) {
-      setCameras(cameras.map(c => c.id === editingCamera.id ? { ...editingCamera, ...cameraData } : c));
+  const handleAddOrUpdateCamera = (cameraData: Omit<Camera, 'id' | 'status' | 'userId'>, existingId?: string) => {
+    if (existingId) {
+      // Editing existing camera
+      setCameras(cameras.map(c => c.id === existingId ? { ...c, ...cameraData } : c));
       toast({ title: "Camera Updated", description: `${cameraData.name} details have been updated.` });
     } else {
+      // Adding new camera
       const newCamera: Camera = {
         ...cameraData,
-        id: `cam-${Date.now()}`,
-        status: 'live', // Default new cameras to live
-        userId: 'mock-user-1', // Assuming a logged-in user
+        id: `cam-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
+        status: 'live', 
+        userId: 'mock-user-1', 
       };
-      setCameras([...cameras, newCamera]);
+      setCameras(prevCameras => [...prevCameras, newCamera].sort((a,b) => a.name.localeCompare(b.name)));
       toast({ title: "Camera Added", description: `${newCamera.name} has been successfully added.` });
     }
     setEditingCamera(null);
@@ -79,22 +82,33 @@ export default function DashboardClientPage() {
   };
 
   const handleDeleteCamera = (cameraToDelete: Camera) => {
-    if (window.confirm(`Are you sure you want to delete ${cameraToDelete.name}?`)) {
+    if (window.confirm(`Are you sure you want to delete ${cameraToDelete.name}? This will also delete associated alerts.`)) {
       setCameras(cameras.filter(camera => camera.id !== cameraToDelete.id));
-      // Also remove related alerts or reassign them if necessary
+      
       const updatedAlerts = alerts.filter(alert => alert.cameraId !== cameraToDelete.id)
                                 .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setAlerts(updatedAlerts);
-      setFilteredAlerts(updatedAlerts);
-      toast({ title: "Camera Deleted", description: `${cameraToDelete.name} has been removed.`, variant: "destructive" });
+      
+      // Also update filteredAlerts based on the new alerts list
+      // This simple approach re-filters based on the current filter state if filters were active,
+      // or just sets to updatedAlerts if no specific filters active. For now, we re-filter.
+      // A more robust way would be to store current filter params and re-apply them.
+      const currentFilters = { // This is a simplification, ideally you'd store current filter state
+          cameraId: searchParams.get('cameraId'),
+          type: searchParams.get('type'),
+          severity: searchParams.get('severity'),
+          date: searchParams.get('date') ? new Date(searchParams.get('date')!) : undefined,
+      };
+      handleFilterAlerts(currentFilters, updatedAlerts); // Pass the new alerts list to filter upon
+
+      toast({ title: "Camera Deleted", description: `${cameraToDelete.name} and its alerts have been removed.`, variant: "destructive" });
     }
   };
 
   const handleSimulateIncident = async (camera: Camera) => {
     toast({ title: "Simulating Incident...", description: `Generating AI alert for ${camera.name}.` });
     try {
-      // More realistic incident types
-      const incidentTypes: CreateSmartAlertActionInput['incidentDetails']['type'][] = ['physical_assault', 'distress', 'non_consensual'];
+      const incidentTypes: CreateSmartAlertActionInput['incidentDetails']['type'][] = ['physical_assault', 'distress', 'non_consensual', 'nudity', 'other'];
       const randomIncidentType = incidentTypes[Math.floor(Math.random() * incidentTypes.length)];
       
       const input: CreateSmartAlertActionInput = {
@@ -108,10 +122,17 @@ export default function DashboardClientPage() {
       const newAlert = await createSmartAlertAction(input);
       const updatedAlerts = [newAlert, ...alerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setAlerts(updatedAlerts);
-      // Re-apply filters to include the new alert if it matches, or just prepend to filteredAlerts if no filters are active
-      // For simplicity here, we'll just update filteredAlerts directly, assuming it should also be sorted.
-      // A more robust approach might re-evaluate current filters against the new alerts list.
-      setFilteredAlerts(prevAlerts => [newAlert, ...prevAlerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())); 
+      
+      // Re-apply filters to potentially include the new alert
+      // This simplification refilters the updatedAlerts list based on current searchParams
+      const currentFilters = {
+          cameraId: searchParams.get('cameraId') || undefined,
+          type: searchParams.get('type') || undefined,
+          severity: searchParams.get('severity') || undefined,
+          date: searchParams.get('date') ? new Date(searchParams.get('date')!) : undefined,
+      };
+      handleFilterAlerts(currentFilters, updatedAlerts);
+
       toast({ title: "AI Alert Generated", description: `New ${newAlert.severity} alert for ${camera.name}.`, variant: newAlert.severity === 'HIGH' ? 'destructive' : 'default' });
     } catch (error) {
       toast({ title: "Simulation Failed", description: "Could not generate AI alert.", variant: "destructive" });
@@ -119,8 +140,8 @@ export default function DashboardClientPage() {
     }
   };
 
-  const handleFilterAlerts = (filters: { cameraId?: string; type?: string; date?: Date, severity?: string }) => {
-    let tempAlerts = alerts;
+  const handleFilterAlerts = (filters: { cameraId?: string; type?: string; date?: Date, severity?: string }, sourceAlerts: Alert[] = alerts) => {
+    let tempAlerts = [...sourceAlerts]; // Use a copy of sourceAlerts
     if (filters.cameraId) {
       tempAlerts = tempAlerts.filter(alert => alert.cameraId === filters.cameraId);
     }
@@ -140,17 +161,19 @@ export default function DashboardClientPage() {
   };
   
   const handleClearAlertFilters = () => {
-    setFilteredAlerts(alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    setFilteredAlerts([...alerts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    // Optionally clear filter inputs in AlertFilters component if it holds its own state for inputs
   }
 
   const handleVerifyAlert = (alertToVerify: Alert, isTruePositive: boolean, notes?: string) => {
-    const updatedAlertsList = alerts.map(alert =>
-      alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
-    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setAlerts(updatedAlertsList);
-    setFilteredAlerts(currentFiltered => currentFiltered.map(alert => 
+    const updateAlertList = (list: Alert[]) => 
+      list.map(alert =>
         alert.id === alertToVerify.id ? { ...alert, isVerified: isTruePositive, notes } : alert
-    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    setAlerts(prevAlerts => updateAlertList(prevAlerts));
+    setFilteredAlerts(prevFilteredAlerts => updateAlertList(prevFilteredAlerts));
+    
     toast({
       title: "Alert Verified",
       description: `Alert for ${alertToVerify.cameraName} marked as ${isTruePositive ? 'True Positive' : 'False Positive'}.`
@@ -158,12 +181,7 @@ export default function DashboardClientPage() {
   };
 
   const handleViewEvidence = (alert: Alert) => {
-    // For now, just log. In a real app, this would open a modal with video playback.
-    console.log("Viewing evidence for alert:", alert);
-    toast({ title: "View Evidence", description: `Displaying evidence for alert from ${alert.cameraName}. (Mock)` });
-    // Potentially open a dialog with the alert.videoClipUrl or similar
-    // For example, if we had a state for selectedAlertForEvidence:
-    // setSelectedAlertForEvidence(alert); setIsEvidenceDialogOpen(true);
+    setSelectedAlertForEvidence(alert);
   };
   
   const handleViewLive = (camera: Camera) => {
@@ -175,14 +193,14 @@ export default function DashboardClientPage() {
     <div className="space-y-8">
       <Dialog open={isAddCameraDialogOpen} onOpenChange={(isOpen) => {
         setIsAddCameraDialogOpen(isOpen);
-        if (!isOpen) setEditingCamera(null); // Reset editing state when dialog closes
+        if (!isOpen) setEditingCamera(null); 
       }}>
         <DialogContent className="sm:max-w-[425px] md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCamera ? 'Edit Camera' : 'Add New Camera'}</DialogTitle>
           </DialogHeader>
           <AddCameraForm 
-            onAddCamera={handleAddOrUpdateCamera} 
+            onSubmitCamera={handleAddOrUpdateCamera} 
             existingCamera={editingCamera}
             onClose={() => {
               setIsAddCameraDialogOpen(false);
@@ -213,6 +231,69 @@ export default function DashboardClientPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!selectedAlertForEvidence} onOpenChange={(isOpen) => { if(!isOpen) setSelectedAlertForEvidence(null);}}>
+        <DialogContent className="max-w-2xl">
+            {selectedAlertForEvidence && (
+                <>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                           <AlertTriangle className={
+                               selectedAlertForEvidence.severity === 'HIGH' ? 'text-red-500' : 
+                               selectedAlertForEvidence.severity === 'MEDIUM' ? 'text-yellow-500' : 'text-green-500'
+                           } />
+                           Evidence for Alert: {selectedAlertForEvidence.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Camera: {selectedAlertForEvidence.cameraName} | Location: {cameras.find(c=>c.id === selectedAlertForEvidence.cameraId)?.location || 'N/A'} <br/>
+                            Time: {format(new Date(selectedAlertForEvidence.timestamp), "PPP p")}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        {selectedAlertForEvidence.videoClipUrl && (
+                            <div className="aspect-video bg-muted rounded-md overflow-hidden">
+                                <Image 
+                                    src={selectedAlertForEvidence.videoClipUrl} 
+                                    alt={`Evidence clip for alert ${selectedAlertForEvidence.id}`} 
+                                    width={640} 
+                                    height={360}
+                                    className="object-cover w-full h-full"
+                                    data-ai-hint="alert evidence"
+                                />
+                            </div>
+                        )}
+                        <div>
+                            <h4 className="font-semibold text-sm">Alert Details:</h4>
+                            <p className="text-sm text-muted-foreground">{selectedAlertForEvidence.description}</p>
+                        </div>
+                        {selectedAlertForEvidence.reason && (
+                             <div>
+                                <h4 className="font-semibold text-sm">AI Reason:</h4>
+                                <p className="text-sm text-muted-foreground">{selectedAlertForEvidence.reason}</p>
+                            </div>
+                        )}
+                        {selectedAlertForEvidence.suggestedAction && (
+                            <div>
+                                <h4 className="font-semibold text-sm">Suggested Action:</h4>
+                                <p className="text-sm text-muted-foreground">{selectedAlertForEvidence.suggestedAction}</p>
+                            </div>
+                        )}
+                         {selectedAlertForEvidence.isVerified !== undefined && (
+                          <div className={`mt-3 p-2 rounded-md text-sm flex items-center gap-2 ${selectedAlertForEvidence.isVerified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            <Info size={16} />
+                            <span>{selectedAlertForEvidence.isVerified ? 'Verified as True Positive' : 'Verified as False Positive'}</span>
+                          </div>
+                        )}
+                        {selectedAlertForEvidence.notes && <p className="text-xs text-muted-foreground mt-1 italic">Notes: {selectedAlertForEvidence.notes}</p>}
+                    </div>
+                    <div className="flex justify-end">
+                         <Button variant="outline" onClick={() => setSelectedAlertForEvidence(null)}>Close</Button>
+                    </div>
+                </>
+            )}
+        </DialogContent>
+      </Dialog>
+
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-3 md:w-auto md:inline-flex mb-6">
@@ -269,9 +350,8 @@ export default function DashboardClientPage() {
 
         <TabsContent value="cameras">
           <section id="manage-cameras">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <h2 className="text-2xl font-semibold">Manage Cameras ({cameras.length})</h2>
-              {/* Removed DialogTrigger wrapper here, button directly controls dialog state */}
               <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
               </Button>
@@ -294,7 +374,6 @@ export default function DashboardClientPage() {
                 <Video size={48} className="mx-auto text-muted-foreground mb-2" />
                 <h3 className="text-xl font-medium text-muted-foreground">No Cameras Added</h3>
                 <p className="text-sm text-muted-foreground mb-4">Get started by adding your first CCTV camera.</p>
-                {/* Removed DialogTrigger wrapper here, button directly controls dialog state */}
                 <Button onClick={() => { setEditingCamera(null); setIsAddCameraDialogOpen(true); }}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Add Camera
                 </Button>
@@ -308,15 +387,15 @@ export default function DashboardClientPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">Alert Feed ({filteredAlerts.length} of {alerts.length})</h2>
               <div className="flex items-center gap-2">
-                  <Button variant={viewMode === 'grid' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('grid')}>
+                  <Button variant={viewMode === 'grid' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('grid')} aria-label="Grid view">
                       <LayoutGrid />
                   </Button>
-                  <Button variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('list')}>
+                  <Button variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('list')} aria-label="List view">
                       <List />
                   </Button>
               </div>
             </div>
-            <AlertFilters cameras={cameras} onFilterChange={handleFilterAlerts} onClearFilters={handleClearAlertFilters}/>
+            <AlertFilters cameras={cameras} onFilterChange={(filters) => handleFilterAlerts(filters, alerts)} onClearFilters={handleClearAlertFilters}/>
             {filteredAlerts.length > 0 ? (
               <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
                 {filteredAlerts.map(alert => (
@@ -336,4 +415,3 @@ export default function DashboardClientPage() {
     </div>
   );
 }
-

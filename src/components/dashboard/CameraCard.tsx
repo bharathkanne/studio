@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Camera } from '@/lib/types';
