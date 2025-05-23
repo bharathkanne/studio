@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,44 +6,92 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
-import { Users, PlusCircle, Edit, Trash2, ShieldAlert, ShieldCheck } from "lucide-react";
-import { mockUsersList } from '@/lib/mockData'; // Assuming you'll create this
+import { Users, PlusCircle, Edit, Trash2, ShieldCheck } from "lucide-react";
+import { mockUsersList } from '@/lib/mockData';
 import type { User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-// TODO: Create AddUserForm/Dialog similar to AddCameraForm for full functionality
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AddUserForm } from '@/components/dashboard/AddUserForm';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null); // For future edit functionality
   const { toast } = useToast();
 
   useEffect(() => {
-    // In a real app, fetch users from an API
-    setUsers(mockUsersList);
+    setUsers(mockUsersList.sort((a,b) => (a.name || '').localeCompare(b.name || '')));
   }, []);
 
-  const handleAddUser = () => {
-    // Placeholder: Open a dialog to add a new user
-    toast({ title: "Add User", description: "This would open a form to add a new user. (Not implemented)"});
+  const handleOpenAddUserDialog = () => {
+    setEditingUser(null); // Ensure we are in "add" mode
+    setIsAddUserDialogOpen(true);
   };
 
+  const handleAddOrUpdateUser = (userData: Omit<User, 'id'>) => {
+    // For mock purposes, we'll generate a new ID for additions
+    // In a real app, ID generation or data persistence would be backend-driven.
+    // Password handling is also simplified for mock.
+    if (editingUser) {
+      // Placeholder for update logic
+      setUsers(users.map(u => u.id === editingUser.id ? { ...editingUser, ...userData } : u).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+      toast({ title: "User Updated (Mock)", description: `${userData.name} details have been updated.` });
+    } else {
+      const newUser: User = {
+        ...userData,
+        id: `user-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
+      };
+      setUsers([...users, newUser].sort((a,b) => (a.name || '').localeCompare(b.name || '')));
+      // Update mockUsersList as well so it persists across potential re-renders if page isn't fully SPA for this
+      // mockUsersList.push(newUser); // This would modify the imported mock array directly
+      toast({ title: "User Added", description: `${newUser.name} has been successfully added.` });
+    }
+    setEditingUser(null);
+    setIsAddUserDialogOpen(false);
+  };
+
+
   const handleEditUser = (user: User) => {
-    // Placeholder: Open a dialog to edit user details
-    toast({ title: "Edit User", description: `This would open a form to edit ${user.name}. (Not implemented)`});
+    // setEditingUser(user);
+    // setIsAddUserDialogOpen(true);
+    toast({ title: "Edit User (Not Implemented)", description: `Editing for ${user.name} is not fully implemented yet.`});
   };
 
   const handleDeleteUser = (userToDelete: User) => {
-    // Placeholder: Confirm and delete user
+    if (userToDelete.email === 'admin@example.com') {
+        toast({ title: "Cannot Delete Admin", description: "The default admin user cannot be deleted.", variant: "destructive" });
+        return;
+    }
     if (window.confirm(`Are you sure you want to delete ${userToDelete.name}? This is a mock action.`)) {
-      setUsers(users.filter(user => user.id !== userToDelete.id));
+      setUsers(users.filter(user => user.id !== userToDelete.id).sort((a,b) => (a.name || '').localeCompare(b.name || '')));
       toast({ title: "User Deleted (Mock)", description: `${userToDelete.name} has been removed from the list.`});
     }
   };
 
   return (
     <div className="space-y-6">
+      <Dialog open={isAddUserDialogOpen} onOpenChange={(isOpen) => {
+        setIsAddUserDialogOpen(isOpen);
+        if (!isOpen) setEditingUser(null);
+      }}>
+        <DialogContent className="sm:max-w-[425px] md:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? 'Edit User' : 'Add New User'}</DialogTitle>
+          </DialogHeader>
+          <AddUserForm 
+            onAddUser={handleAddOrUpdateUser} 
+            existingUser={editingUser}
+            onClose={() => {
+              setIsAddUserDialogOpen(false);
+              setEditingUser(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold flex items-center gap-2"><Users /> User Management</h1>
-        <Button onClick={handleAddUser}>
+        <Button onClick={handleOpenAddUserDialog}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add New User
         </Button>
       </div>
@@ -70,16 +119,16 @@ export default function UserManagementPage() {
                       <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
                       <TableCell>{user.email}</TableCell>
                       <TableCell>
-                        <Badge variant={user.isAdmin ? "default" : "secondary"} className={user.isAdmin ? "bg-primary text-primary-foreground" : ""}>
-                          {user.isAdmin ? <ShieldCheck className="mr-1 h-3.5 w-3.5" /> : <Users className="mr-1 h-3.5 w-3.5" />}
-                          {user.isAdmin ? 'Admin' : 'User'}
+                        <Badge variant={user.isAdmin ? "default" : "secondary"} className={`${user.isAdmin ? "bg-primary text-primary-foreground" : ""} flex items-center w-fit`}>
+                          {user.isAdmin ? <ShieldCheck className="mr-1 h-3.5 w-3.5 flex-shrink-0" /> : <Users className="mr-1 h-3.5 w-3.5 flex-shrink-0" />}
+                          <span className="truncate">{user.isAdmin ? 'Admin' : 'User'}</span>
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
                           <Edit className="mr-1 h-4 w-4" /> Edit
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user)} disabled={user.isAdmin && user.email === 'admin@example.com'}>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user)} disabled={user.email === 'admin@example.com'}>
                           <Trash2 className="mr-1 h-4 w-4" /> Delete
                         </Button>
                       </TableCell>
@@ -98,10 +147,11 @@ export default function UserManagementPage() {
         </CardContent>
          {users.length > 0 && (
           <CardFooter className="text-sm text-muted-foreground">
-            Showing {users.length} user(s).
+            Showing {users.length} user(s). Users are sorted by name.
           </CardFooter>
         )}
       </Card>
     </div>
   );
 }
+
